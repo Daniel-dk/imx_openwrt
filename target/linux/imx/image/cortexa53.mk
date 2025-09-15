@@ -25,6 +25,17 @@ define Build/boot-img-ext4
 		$@.bootimg $@.boot
 endef
 
+define Build/boot-img-ext4-bootscr
+	rm -fR $@.boot
+	mkdir -p $@.boot
+	$(foreach dts,$(DEVICE_DTS), $(CP) $(KDIR)/image-$(dts).dtb $@.boot/$(dts).dtb;)
+	$(CP) $(IMAGE_KERNEL) $@.boot/$(KERNEL_NAME)
+	$(CP) $@-boot.scr $@.boot/boot.scr
+	make_ext4fs -J -L kernel -l $(IMX_SD_KERNEL_PARTSIZE)M \
+		$(if $(SOURCE_DATE_EPOCH),-T $(SOURCE_DATE_EPOCH)) \
+		$@.bootimg $@.boot
+endef
+
 define Build/sdcard-img-ext4
 	SIGNATURE="$(IMG_PART_SIGNATURE)" \
 	PARTOFFSET="$(IMX_SD_KERNELPART_OFFSET)"M PADDING=1 \
@@ -80,7 +91,9 @@ define Device/Default
   DEVICE_DTS_DIR := $(DTS_DIR)/freescale
   KERNEL_INSTALL := 1
   KERNEL_NAME := Image
-  KERNEL := kernel-bin
+  KERNEL := kernel-bin | uImage none
+  KERNEL_LOADADDR := 0x9d500000
+#KERNEL := kernel-bin   this requires booti ${kernel_addr_r} - ${fdt_addr_r} in boot script
   IMAGES := sdcard.img sysupgrade.bin
   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
 endef
@@ -169,16 +182,21 @@ define Device/imx8mquad
   BOOT_OFFSET := 33
   BOOT_TYPE := flash_evk
   ENV_NAME:=imx8mq-sdboot
+  BOOT_SCRIPT:=toradex_apalis
   DEVICE_PACKAGES += \
 	atf-imx8mq \
 	firmware-imx \
 	imx-mkimage \
 	u-boot-imx8mq
-  DEVICE_DTS := $(basename $(notdir $(wildcard $(DTS_DIR)/freescale/imx8mq-evk*.dts)))
+  DEVICE_DTS := $(basename $(notdir $(wildcard $(DTS_DIR)/freescale/imx8qm-apalis-v1.1-ixora-v1.2.dts)))
+#  DEVICE_DTS := $(basename $(notdir $(wildcard $(DTS_DIR)/freescale/imx8qm-apalis-v1.1-eval.dts)))
+# 
+# DEVICE_DTS := $(basename $(notdir $(wildcard $(DTS_DIR)/freescale/imx8mq-evk*.dts)))
   IMAGE/sdcard.img := \
 	imx-clean | \
 	imx-create-flash $$(BOARD_NAME) $$(BOOT_TYPE) | \
-	boot-img-ext4 | \
+	boot-scr | \
+	boot-img-ext4-bootscr | \
 	sdcard-img-ext4 | \
 	imx-append-boot iMX8M | \
 	imx-append-env $$(ENV_NAME)-uboot-env.bin
